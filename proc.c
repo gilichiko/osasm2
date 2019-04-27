@@ -101,27 +101,28 @@ found:
   p->pid = nextpid++;
 
   release(&ptable.lock);
-
+  *t=p->threads[0];
   // Allocate kernel stack.
-  if((p->kstack = kalloc()) == 0){
+  if((t->kstack = kalloc()) == 0){
+    //fixme t->state=threadUNUSED;
     p->state = UNUSED;
     return 0;
   }
-  sp = p->kstack + KSTACKSIZE;
+  sp = t->kstack + KSTACKSIZE;
 
   // Leave room for trap frame.
-  sp -= sizeof *p->tf;
-  p->tf = (struct trapframe*)sp;
+  sp -= sizeof *t->tf;
+  t->tf = (struct trapframe*)sp;
 
   // Set up new context to start executing at forkret,
   // which returns to trapret.
   sp -= 4;
   *(uint*)sp = (uint)trapret;
 
-  sp -= sizeof *p->context;
-  p->context = (struct context*)sp;
-  memset(p->context, 0, sizeof *p->context);
-  p->context->eip = (uint)forkret;
+  sp -= sizeof *t->context;
+  t->context = (struct context*)sp;
+  memset(t->context, 0, sizeof *t->context);
+  t->context->eip = (uint)forkret;
 
   return p;
 }
@@ -137,18 +138,19 @@ userinit(void)
   p = allocproc();
   
   initproc = p;
+    struct thread t=p->threads[0];
   if((p->pgdir = setupkvm()) == 0)
     panic("userinit: out of memory?");
   inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
   p->sz = PGSIZE;
-  memset(p->tf, 0, sizeof(*p->tf));
-  p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
-  p->tf->ds = (SEG_UDATA << 3) | DPL_USER;
-  p->tf->es = p->tf->ds;
-  p->tf->ss = p->tf->ds;
-  p->tf->eflags = FL_IF;
-  p->tf->esp = PGSIZE;
-  p->tf->eip = 0;  // beginning of initcode.S
+  memset(t.tf, 0, sizeof(*t.tf));
+  t.tf->cs = (SEG_UCODE << 3) | DPL_USER;
+  t.tf->ds = (SEG_UDATA << 3) | DPL_USER;
+  t.tf->es = t.tf->ds;
+  t.tf->ss = t.tf->ds;
+  t.tf->eflags = FL_IF;
+  t.tf->esp = PGSIZE;
+  t.tf->eip = 0;  // beginning of initcode.S
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -159,7 +161,7 @@ userinit(void)
   // because the assignment might not be atomic.
   acquire(&ptable.lock);
 
-  p->state = RUNNABLE;
+  t.state = threadRUNNABLE;
 
   release(&ptable.lock);
 }
@@ -193,26 +195,30 @@ fork(void)
 {
   int i, pid;
   struct proc *np;
+    struct thread nt;
+    struct thread *currthread=mythread();
   struct proc *curproc = myproc();
 
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
+    np->threads[0]=nt;
 
   // Copy process state from proc.
   if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
-    kfree(np->kstack);
-    np->kstack = 0;
+    kfree(nt.kstack);
+    nt.kstack = 0;
     np->state = UNUSED;
+      nt.state=threadUNUSED;
     return -1;
   }
   np->sz = curproc->sz;
   np->parent = curproc;
-  *np->tf = *curproc->tf;
+  *nt.tf = *currthread->tf;
 
   // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
+  nt.tf->eax = 0;
 
   for(i = 0; i < NOFILE; i++)
     if(curproc->ofile[i])
@@ -225,8 +231,8 @@ fork(void)
 
   acquire(&ptable.lock);
 
-  np->state = RUNNABLE;
-
+  //fixme np->state = USED;
+    nt.state=threadRUNNABLE;
   release(&ptable.lock);
 
   return pid;
@@ -286,20 +292,22 @@ wait(void)
   struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();
-  
+  //fixme mybe should use- struct thread *currthread=mythread();
+    struct thread *t;
   acquire(&ptable.lock);
   for(;;){
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        t=&p->threads[0];
       if(p->parent != curproc)
         continue;
       havekids = 1;
       if(p->state == ZOMBIE){
         // Found one.
         pid = p->pid;
-        kfree(p->kstack);
-        p->kstack = 0;
+        kfree(t->kstack);
+        t->kstack = 0;
         freevm(p->pgdir);
         p->pid = 0;
         p->parent = 0;
@@ -319,6 +327,7 @@ wait(void)
 
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+      //todo sleep for thread? for all threads
   }
 }
 
