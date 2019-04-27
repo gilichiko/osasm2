@@ -64,6 +64,16 @@ myproc(void) {
   popcli();
   return p;
 }
+struct thread*
+mythread(void) {
+  struct cpu *c;
+  struct thread *thread;
+  pushcli();
+  c = mycpu();
+  thread = c->currthread;
+  popcli();
+  return thread;
+}
 
 //PAGEBREAK: 32
 // Look in the process table for an UNUSED proc.
@@ -74,6 +84,7 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
+    struct thread *t;
   char *sp;
 
   acquire(&ptable.lock);
