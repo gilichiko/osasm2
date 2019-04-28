@@ -101,7 +101,7 @@ allocproc(void) {
     p->pid = nextpid++;
 
     release(&ptable.lock);
-    t = (struct thread *)p->threads;
+    t = (struct thread *) p->threads;
     // Allocate kernel stack.
     if ((t->kstack = kalloc()) == 0) {
         p->state = UNUSED;
@@ -200,7 +200,7 @@ fork(void) {
     if ((np = allocproc()) == 0) {
         return -1;
     }
-    struct thread* nt = &np->threads[0];
+    struct thread *nt = &np->threads[0];
 
     // Copy process state from proc.
     if ((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0) {
@@ -242,42 +242,65 @@ void
 exit(void) {
     struct proc *curproc = myproc();
     struct proc *p;
+    struct thread *t;
     int fd;
 
-    if (curproc == initproc)
+    if (curproc == initproc) {
         panic("init exiting");
+    }
 
-    // Close all open files.
-    for (fd = 0; fd < NOFILE; fd++) {
-        if (curproc->ofile[fd]) {
-            fileclose(curproc->ofile[fd]);
-            curproc->ofile[fd] = 0;
+    struct thread *curthread = mythread();
+    curthread->state = threadZOMBIE;
+    curproc->killed = 1;
+
+    // Wake process from sleep if necessary.
+    for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
+        if (t->state == threadSLEEPING) {
+            t->state = threadRUNNABLE;
+        }
+    }
+    // check if there's another thread with runnable / running process
+
+    int exist_running_thread = 0;
+    for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
+        // TODO: check if need sleeping
+        if(t->state != threadUNUSED && t->state != threadZOMBIE) {
+            exist_running_thread = 1;
         }
     }
 
-    begin_op();
-    iput(curproc->cwd);
-    end_op();
-    curproc->cwd = 0;
-
-    acquire(&ptable.lock);
-
-    // Parent might be sleeping in wait().
-    wakeup1(curproc->parent);
-
-    // Pass abandoned children to init.
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-        if (p->parent == curproc) {
-            p->parent = initproc;
-            if (p->state == ZOMBIE)
-                wakeup1(initproc);
+    if(!exist_running_thread) {
+        // Close all open files.
+        for (fd = 0; fd < NOFILE; fd++) {
+            if (curproc->ofile[fd]) {
+                fileclose(curproc->ofile[fd]);
+                curproc->ofile[fd] = 0;
+            }
         }
+
+        begin_op();
+        iput(curproc->cwd);
+        end_op();
+        curproc->cwd = 0;
+
+        acquire(&ptable.lock);
+
+        // Parent might be sleeping in wait().
+        wakeup1(curproc->parent);
+
+        // Pass abandoned children to init.
+        for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+            if (p->parent == curproc) {
+                p->parent = initproc;
+                if (p->state == ZOMBIE)
+                    wakeup1(initproc);
+            }
+        }
+
+//        memset(p->threads, 0, NTHREAD * sizeof t);
+        // Jump into the scheduler, never to return.
+        curproc->state = ZOMBIE;
     }
-
-    mythread()->state = threadZOMBIE;
-
-    // Jump into the scheduler, never to return.
-    curproc->state = ZOMBIE;
     sched();
     panic("zombie exit");
 }
@@ -361,7 +384,7 @@ scheduler(void) {
         // Loop over process table looking for process to run.
         acquire(&ptable.lock);
         for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-            if(p->state != USED)
+            if (p->state != USED)
                 continue;
             int thread_position = is_runnable_thread_exist(p);
             if (thread_position == -1)
