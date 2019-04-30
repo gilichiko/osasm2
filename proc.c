@@ -240,6 +240,8 @@ fork(void) {
 // until its parent calls wait() to find out it exited.
 void
 exit(void) {
+    acquire(&ptable.lock);
+
     struct proc *curproc = myproc();
     struct proc *p;
     struct thread *t;
@@ -249,27 +251,24 @@ exit(void) {
         panic("init exiting");
     }
 
+
     struct thread *curthread = mythread();
     curthread->state = threadZOMBIE;
     curproc->killed = 1;
 
-    // Wake process from sleep if necessary.
-    for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
-        if (t->state == threadSLEEPING) {
-            t->state = threadRUNNABLE;
-        }
-    }
     // check if there's another thread with runnable / running process
 
     int exist_running_thread = 0;
     for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
         // TODO: check if need sleeping
-        if(t->state != threadUNUSED && t->state != threadZOMBIE) {
+        if (t->state != threadUNUSED && t->state != threadZOMBIE) {
             exist_running_thread = 1;
         }
     }
 
-    if(!exist_running_thread) {
+    if (!exist_running_thread) {
+        release(&ptable.lock);
+
         // Close all open files.
         for (fd = 0; fd < NOFILE; fd++) {
             if (curproc->ofile[fd]) {
@@ -277,6 +276,7 @@ exit(void) {
                 curproc->ofile[fd] = 0;
             }
         }
+
 
         begin_op();
         iput(curproc->cwd);
@@ -297,9 +297,9 @@ exit(void) {
             }
         }
 
-//        memset(p->threads, 0, NTHREAD * sizeof t);
         // Jump into the scheduler, never to return.
         curproc->state = ZOMBIE;
+        curthread->state = threadZOMBIE;
     }
     sched();
     panic("zombie exit");
@@ -393,6 +393,8 @@ scheduler(void) {
             // to release ptable.lock and then reacquire it
             // before jumping back to us.
             c->proc = p;
+
+
             struct thread *t = &p->threads[thread_position];
             c->currthread = t;
 
@@ -402,9 +404,11 @@ scheduler(void) {
             swtch(&(c->scheduler), t->context);
             switchkvm();
 
+
             // Process is done running for now.
             // It should have changed its p->state before coming back.
             c->proc = 0;
+            c->currthread = 0;
         }
         release(&ptable.lock);
 
