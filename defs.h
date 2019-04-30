@@ -10,6 +10,8 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -121,6 +123,10 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+int             kthread_create(void (*start_func)(), void* stack);
+int             kthread_id (void);
+void            kthread_exit (void);
+int             kthread_join(int thread_id);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

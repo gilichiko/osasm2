@@ -1,1 +1,1 @@
-make clean TOOLPREFIX=i386-elf- qemu-nox-gdb
+make TOOLPREFIX=i386-elf- qemu-nox-gdb

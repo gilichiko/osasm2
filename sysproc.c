@@ -89,3 +89,34 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+
+
+/**
+Threads
+ */
+
+int sys_kthread_create(void){
+    void* stack;
+    void(*start_func)();
+    argptr(0, (void *) &start_func, sizeof(start_func));
+    argptr(1, (void *) &stack, MAX_STACK_SIZE);
+    return kthread_create(start_func, stack);
+}
+
+int sys_kthread_id(void) {
+  return kthread_id();
+}
+
+int sys_kthread_exit(void) {
+  kthread_exit();
+  // should not reach the following line
+  return 0;
+}
+
+int sys_kthread_join(void) {
+    int pid;
+    if(argint(0, &pid) < 0)
+        return -1;
+    return kthread_join(pid);
+}

@@ -15,6 +15,7 @@ struct {
 static struct proc *initproc;
 
 int nextpid = 1;
+int nexttid = 1;
 
 extern void forkret(void);
 
@@ -301,6 +302,7 @@ exit(void) {
         curproc->state = ZOMBIE;
         curthread->state = threadZOMBIE;
     }
+    wakeup1(curthread);
     sched();
     panic("zombie exit");
 }
@@ -319,21 +321,29 @@ wait(void) {
         // Scan through table looking for exited children.
         havekids = 0;
         for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-            t = &p->threads[0];
-            if (p->parent != curproc)
+            if (p->parent != curproc) {
                 continue;
+            }
             havekids = 1;
             if (p->state == ZOMBIE) {
                 // Found one.
+                // we should free all the threads
+                for (t = p->threads; t < &p->threads[NTHREAD]; t++) {
+                    if (t->state != threadUNUSED) {
+                        kfree(t->kstack);
+                        t->kstack = 0;
+                        t->state = threadUNUSED;
+                    }
+                }
+
                 pid = p->pid;
-                kfree(t->kstack);
-                t->kstack = 0;
                 freevm(p->pgdir);
                 p->pid = 0;
                 p->parent = 0;
                 p->name[0] = 0;
                 p->killed = 0;
                 p->state = UNUSED;
+
                 release(&ptable.lock);
                 return pid;
             }
@@ -594,4 +604,136 @@ procdump(void) {
         }
         cprintf("\n");
     }
+}
+
+
+/**
+ * Threads
+ */
+
+
+int get_next_free_thread(struct proc *p) {
+    struct thread *t;
+    int position = 0;
+    for (t = p->threads; t < &p->threads[NTHREAD]; t++) {
+        if (t->state == threadUNUSED) {
+            return position;
+        }
+        position++;
+    }
+    return -1;
+}
+
+int kthread_create(void (*start_func)(), void *stack) {
+    cprintf("kthread create\n");
+    acquire(&ptable.lock);
+    struct proc *p = myproc();
+    int free_thread_position = get_next_free_thread(p);
+    if (free_thread_position == -1) {
+        return -1;
+    }
+
+    struct thread *t = &p->threads[free_thread_position];
+
+    t->tid = nexttid++;
+
+    if ((t->kstack = kalloc()) == 0) {
+        return -1;
+    }
+
+
+    char* sp;
+    sp = t->kstack + KSTACKSIZE;
+
+    // Leave room for trap frame.
+    sp -= sizeof *t->tf;
+    t->tf = (struct trapframe *) sp;
+
+    // Set up new context to start executing at forkret,
+    // which returns to trapret.
+    sp -= 4;
+    *(uint *) sp = (uint) trapret;
+
+    sp -= sizeof *t->context;
+    t->context = (struct context *) sp;
+    memset(t->context, 0, sizeof *t->context);
+    t->context->eip = (uint) forkret;
+
+
+    *t->tf = *mythread()->tf;
+
+
+
+
+
+    t->tf->eip = (uint) start_func;
+    t->tf->esp = (uint) stack;
+
+    t->state = threadRUNNABLE;
+    release(&ptable.lock);
+    return t->tid;
+}
+
+int kthread_id(void) {
+    return mythread()->tid;
+}
+
+void kthread_exit(void) {
+    acquire(&ptable.lock);
+    struct proc *curproc = myproc();
+    struct thread *curthread = mythread();
+    struct thread *t;
+    int exist_running_thread = 0;
+    for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
+        if (t->state != threadUNUSED && t->state != threadZOMBIE && t->tid != curthread->tid) {
+            exist_running_thread = 1;
+        }
+    }
+
+    if (exist_running_thread) {
+        curthread->state = threadZOMBIE;
+        wakeup1(curthread);
+        cprintf("Closing only thread: %d\n", curthread->tid);
+        sched();
+    } else {
+        cprintf("Closing the process\n");
+        release(&ptable.lock);
+        exit();
+    }
+}
+
+int kthread_join(int thread_id) {
+    acquire(&ptable.lock);
+    struct proc *curproc = myproc();
+    struct thread *t;
+    struct thread *request_thread;
+    int tid_exists = 0;
+
+
+    for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
+        if(t->tid == thread_id) {
+            tid_exists = 1;
+            request_thread = t;
+            if (t->state == threadZOMBIE) {
+                release(&ptable.lock);
+                return 0;
+            }
+        }
+    }
+
+    if(!tid_exists) {
+        release(&ptable.lock);
+        return -1;
+    }
+
+    // if arrived to this line, it indicates that thread exist but still running and we shall wait.
+
+    sleep(request_thread, &ptable.lock);
+
+
+
+
+    release(&ptable.lock);
+
+    return 0;
 }
