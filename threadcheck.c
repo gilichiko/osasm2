@@ -24,13 +24,16 @@ main(int argc, char *argv[]) {
     char stack_first[MAX_STACK_SIZE];
     char stack_second[MAX_STACK_SIZE];
     char stack_third[MAX_STACK_SIZE];
+    char stack_fourth[MAX_STACK_SIZE];
+    char stack_fifth[MAX_STACK_SIZE];
     kthread_create(&f, stack_first);
     kthread_create(&f, stack_second);
     kthread_create(&f, stack_third);
+    kthread_create(&f, stack_fourth);
+    kthread_create(&f, stack_fifth);
 
 
-    printf(0, "Joining\n");
-    printf(1, "Join returned: %d\n", kthread_join(2));
+    printf(1, "Join returned: %d\n", kthread_join(5));
 
     kthread_exit();
 

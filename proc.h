@@ -53,6 +53,7 @@ struct proc {
     struct thread threads[NTHREAD];
     struct inode *cwd;           // Current directory
     char name[16];               // Process name (debugging)
+    int nexttid;
 };
 
 // Process memory is laid out contiguously, low addresses first:

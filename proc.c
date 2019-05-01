@@ -15,7 +15,6 @@ struct {
 static struct proc *initproc;
 
 int nextpid = 1;
-int nexttid = 1;
 
 extern void forkret(void);
 
@@ -123,6 +122,7 @@ allocproc(void) {
     t->context = (struct context *) sp;
     memset(t->context, 0, sizeof *t->context);
     t->context->eip = (uint) forkret;
+    p->nexttid = 1;
     p->state = USED;
     return p;
 }
@@ -625,7 +625,6 @@ int get_next_free_thread(struct proc *p) {
 }
 
 int kthread_create(void (*start_func)(), void *stack) {
-    cprintf("kthread create\n");
     acquire(&ptable.lock);
     struct proc *p = myproc();
     int free_thread_position = get_next_free_thread(p);
@@ -635,7 +634,7 @@ int kthread_create(void (*start_func)(), void *stack) {
 
     struct thread *t = &p->threads[free_thread_position];
 
-    t->tid = nexttid++;
+    t->tid = p->nexttid++;
 
     if ((t->kstack = kalloc()) == 0) {
         return -1;
@@ -667,7 +666,7 @@ int kthread_create(void (*start_func)(), void *stack) {
 
 
     t->tf->eip = (uint) start_func;
-    t->tf->esp = (uint) stack;
+    t->tf->esp = ((uint) stack) + MAX_STACK_SIZE;
 
     t->state = threadRUNNABLE;
     release(&ptable.lock);
@@ -693,10 +692,8 @@ void kthread_exit(void) {
     if (exist_running_thread) {
         curthread->state = threadZOMBIE;
         wakeup1(curthread);
-        cprintf("Closing only thread: %d\n", curthread->tid);
         sched();
     } else {
-        cprintf("Closing the process\n");
         release(&ptable.lock);
         exit();
     }
@@ -727,10 +724,7 @@ int kthread_join(int thread_id) {
     }
 
     // if arrived to this line, it indicates that thread exist but still running and we shall wait.
-
     sleep(request_thread, &ptable.lock);
-
-
 
 
     release(&ptable.lock);
