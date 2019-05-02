@@ -7,14 +7,37 @@
 #include "proc.h"
 #include "spinlock.h"
 
+
+//3.1 sturct mutex and states
+
+enum mutex_state {mutex_free,mutex_locked};
+struct mutex{
+    struct spinlock lock;
+    int mutex_id;
+    int mutex_index;
+    enum mutex_state state;
+    int curr_pid;
+    int curr_tid;
+    int in_use;
+};
+
 struct {
     struct spinlock lock;
     struct proc proc[NPROC];
 } ptable;
 
+//mutex's list
+
+struct {
+    struct spinlock lock;
+    int nextpid = 1;
+    int mutexes_ids[MAX_MUTEXES];
+    struct mutex mutexs[MAX_MUTEXES];
+} mutex_list;
+
 static struct proc *initproc;
 
-int nextpid = 1;
+int nextmitexid=1;
 
 extern void forkret(void);
 
@@ -24,7 +47,15 @@ static void wakeup1(void *chan);
 
 void
 pinit(void) {
-    initlock(&ptable.lock, "ptable");
+    initlock(&ptable.lock, "ptable"); //initalizing ptable
+    initlock(&mutex_list.lock,"mutex_list");
+    for (int i = 0; i < MAX_MUTEXES; ++i) {
+        struct  mutex* m=&mutex_list.mutexs[i];
+        m->state=mutex_free;
+        m->in_use=0;
+        m->mutex_index=i;
+        initlock(&(m->lock),"mutex_"+i);
+    }
 }
 
 // Must be called with interrupts disabled
@@ -730,4 +761,102 @@ int kthread_join(int thread_id) {
     release(&ptable.lock);
 
     return 0;
+}
+
+//3.1 mutex functions
+int kthread_mutex_alloc(){
+    int this_mutex_index=next_availble_mutex();
+    if(this_mutex_index==-1) return -1;
+    else{
+        struct mutex* m=&mutex_list.mutexs[this_mutex_index];
+        acquire(m.lock);
+        m->in_use=1;
+        m->mutex_index=this_mutex_index;
+        m->state=mutex_locked;
+        m->curr_pid=myproc()->pid;
+        m->curr_tid=mythread()->tid;
+        m->mutex_id=next_mid(this_mutex_index);
+        release(m.lock);
+    }
+}
+int kthread_mutex_dealloc(int mutex_id){
+    int this_mutex_index=is_availble_for_dealooc_mutex(mutex_id);
+    if(this_mutex_index==-1) return -1;
+    else{
+        struct mutex* m=&mutex_list.mutexs[this_mutex_index];
+        acquire(m.lock);
+        m->in_use=0;
+        m->mutex_index=-1;
+        m->state=mutex_free;
+        m->curr_pid=-1;
+        m->curr_tid=-1;
+        m->mutex_id=-1;
+        release(m.lock);
+    }
+}
+int kthread_mutex_lock(int mutex_id){
+    return 0;
+}
+int kthread_mutex_unlock(int mutex_id){
+    return 0;
+}
+int next_availble_mutex(){
+    acquire(mutex_list.lock);
+    for (int i = 0; i < MAX_MUTEXES; ++i) {
+        acquire(mutex_list.mutexs[i].lock);
+        if(mutex_list.mutexs[i].in_use==0) {
+            release(mutex_list.lock);
+            return i;
+        }
+        release(mutex_list.mutexs[i].lock);
+    }
+    release(mutex_list.lock);
+    return -1;
+}
+int is_availble_for_dealooc_mutex(int needed_mutex_id){
+
+    acquire(mutex_list.lock);
+    for (int i = 0; i < MAX_MUTEXES; ++i) {
+        acquire(mutex_list.mutexs[i].lock);
+        if(mutex_list.mutexs[i].mutex_id==needed_mutex_id) {
+            if(mutex_list.mutexs[i].in_use==1){
+                release(mutex_list.lock);
+                return -1;
+            }else{
+                return i;
+            }
+
+        }
+        release(mutex_list.mutexs[i].lock);
+    }
+    release(mutex_list.lock);
+    return -1;
+}
+int is_availble_for_lock_mutex(int needed_mutex_id){
+
+    acquire(mutex_list.lock);
+    for (int i = 0; i < MAX_MUTEXES; ++i) {
+        acquire(mutex_list.mutexs[i].lock);
+        if(mutex_list.mutexs[i].mutex_id==needed_mutex_id) {
+            if(mutex_list.mutexs[i].state==mutex_locked){
+                release(mutex_list.lock);
+                return -1;
+            }else{
+                return i;
+            }
+
+        }
+        release(mutex_list.mutexs[i].lock);
+    }
+    release(mutex_list.lock);
+    return -1;
+}
+int next_mid(int for_index){
+    int ret;
+    acquire(mutex_list.lock);
+    ret=mutex_list.nextpid;
+    mutex_list.mutexes_ids[for_index]=ret;
+    mutex_list.nextpid++;
+    release(mutex_list.lock);
+    return ret;
 }
