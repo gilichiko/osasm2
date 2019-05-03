@@ -7,37 +7,36 @@
 #include "user.h"
 #include "kthread.h"
 
-void f(void) {
-    printf(0, "thread: %d was here\n", kthread_id());
-    kthread_exit();
-}
+#define THREAD_NUM 1
+#define STACK_SIZE 500
 
-
-int
-main(int argc, char *argv[]) {
-
-    if (argc < 1) {
-        exit();
+#define THREAD_START(name, id) \
+    void name(){ \
+        printf(1, "thread %d entering\n", id); \
+        sleep( id * 100); \
+        printf(1, "thread %d exiting\n", id); \
+        kthread_exit(); \
     }
 
-    printf(1, "My thread id: %d\n", kthread_id());
-    char stack_first[MAX_STACK_SIZE];
-    char stack_second[MAX_STACK_SIZE];
-    char stack_third[MAX_STACK_SIZE];
-    char stack_fourth[MAX_STACK_SIZE];
-    char stack_fifth[MAX_STACK_SIZE];
-    kthread_create(&f, stack_first);
-    kthread_create(&f, stack_second);
-    kthread_create(&f, stack_third);
-    kthread_create(&f, stack_fourth);
-    kthread_create(&f, stack_fifth);
+#define THREAD_STACK(name) \
+    void * name = ((char *) malloc(STACK_SIZE * sizeof(char))) + STACK_SIZE;
 
+THREAD_START(threadStart_1, 1)
 
-    printf(1, "Join returned: %d\n", kthread_join(5));
+void (*threads_starts[])(void) =
+        {threadStart_1};
 
-    kthread_exit();
+int main(int argc, char *argv[]){
+    THREAD_STACK(threadStack_1)
 
-    printf(0, "shouldn't arrive to this place\n");
+    void (*threads_stacks[])(void) =
+            {threadStack_1};
+
+    for(int i = 0;i < THREAD_NUM;i++){
+        kthread_create(threads_starts[i], threads_stacks[i]);
+    }
+
+    sleep(1000);
 
     exit();
 }

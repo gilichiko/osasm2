@@ -100,7 +100,7 @@ int sys_kthread_create(void){
     void* stack;
     void(*start_func)();
     argptr(0, (void *) &start_func, sizeof(start_func));
-    argptr(1, (void *) &stack, MAX_STACK_SIZE);
+    argptr(1, (void *) &stack, sizeof(stack));
     return kthread_create(start_func, stack);
 }
 

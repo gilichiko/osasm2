@@ -287,6 +287,8 @@ exit(void) {
 
 
     struct thread *curthread = mythread();
+
+
     curthread->state = threadZOMBIE;
     curproc->killed = 1;
 
@@ -662,6 +664,7 @@ int kthread_create(void (*start_func)(), void *stack) {
     struct proc *p = myproc();
     int free_thread_position = get_next_free_thread(p);
     if (free_thread_position == -1) {
+        release(&ptable.lock);
         return -1;
     }
 
@@ -670,6 +673,7 @@ int kthread_create(void (*start_func)(), void *stack) {
     t->tid = p->nexttid++;
 
     if ((t->kstack = kalloc()) == 0) {
+        release(&ptable.lock);
         return -1;
     }
 
@@ -696,7 +700,7 @@ int kthread_create(void (*start_func)(), void *stack) {
 
 
     t->tf->eip = (uint) start_func;
-    t->tf->esp = ((uint) stack) + MAX_STACK_SIZE;
+    t->tf->esp = ((uint) stack);
 
     t->state = threadRUNNABLE;
     release(&ptable.lock);

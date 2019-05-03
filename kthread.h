@@ -1,4 +1,4 @@
-#define MAX_STACK_SIZE 256
+#define MAX_STACK_SIZE 4000
 #define MAX_MUTEXES 64
 
 /********************************
