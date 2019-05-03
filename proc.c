@@ -10,8 +10,10 @@
 
 //3.1 sturct mutex and states
 
-enum mutex_state {mutex_free,mutex_locked};
-struct mutex{
+enum mutex_state {
+    mutex_free, mutex_locked
+};
+struct mutex {
     struct spinlock lock;
     int mutex_id;
     int mutex_index;
@@ -30,14 +32,14 @@ struct {
 
 struct {
     struct spinlock lock;
-    int nextpid = 1;
+    int nextmid;
     int mutexes_ids[MAX_MUTEXES];
     struct mutex mutexs[MAX_MUTEXES];
 } mutex_list;
 
 static struct proc *initproc;
 
-int nextmitexid=1;
+int nextpid = 1;
 
 extern void forkret(void);
 
@@ -48,13 +50,13 @@ static void wakeup1(void *chan);
 void
 pinit(void) {
     initlock(&ptable.lock, "ptable"); //initalizing ptable
-    initlock(&mutex_list.lock,"mutex_list");
+    initlock(&mutex_list.lock, "mutex_list");
     for (int i = 0; i < MAX_MUTEXES; ++i) {
-        struct  mutex* m=&mutex_list.mutexs[i];
-        m->state=mutex_free;
-        m->in_use=0;
-        m->mutex_index=i;
-        initlock(&(m->lock),"mutex_"+i);
+        struct mutex *m = &mutex_list.mutexs[i];
+        m->state = mutex_free;
+        m->in_use = 0;
+        m->mutex_index = i;
+        initlock(&(m->lock), "mutex_" + i);
     }
 }
 
@@ -672,7 +674,7 @@ int kthread_create(void (*start_func)(), void *stack) {
     }
 
 
-    char* sp;
+    char *sp;
     sp = t->kstack + KSTACKSIZE;
 
     // Leave room for trap frame.
@@ -691,9 +693,6 @@ int kthread_create(void (*start_func)(), void *stack) {
 
 
     *t->tf = *mythread()->tf;
-
-
-
 
 
     t->tf->eip = (uint) start_func;
@@ -739,7 +738,7 @@ int kthread_join(int thread_id) {
 
 
     for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
-        if(t->tid == thread_id) {
+        if (t->tid == thread_id) {
             tid_exists = 1;
             request_thread = t;
             if (t->state == threadZOMBIE) {
@@ -749,7 +748,7 @@ int kthread_join(int thread_id) {
         }
     }
 
-    if(!tid_exists) {
+    if (!tid_exists) {
         release(&ptable.lock);
         return -1;
     }
@@ -763,100 +762,139 @@ int kthread_join(int thread_id) {
     return 0;
 }
 
-//3.1 mutex functions
-int kthread_mutex_alloc(){
-    int this_mutex_index=next_availble_mutex();
-    if(this_mutex_index==-1) return -1;
-    else{
-        struct mutex* m=&mutex_list.mutexs[this_mutex_index];
-        acquire(m.lock);
-        m->in_use=1;
-        m->mutex_index=this_mutex_index;
-        m->state=mutex_locked;
-        m->curr_pid=myproc()->pid;
-        m->curr_tid=mythread()->tid;
-        m->mutex_id=next_mid(this_mutex_index);
-        release(m.lock);
-    }
+int next_mid(int for_index) {
+    int ret;
+    acquire(&mutex_list.lock);
+    ret = mutex_list.nextmid;
+    mutex_list.mutexes_ids[for_index] = ret;
+    mutex_list.nextmid++;
+    release(&mutex_list.lock);
+    return ret;
 }
-int kthread_mutex_dealloc(int mutex_id){
-    int this_mutex_index=is_availble_for_dealooc_mutex(mutex_id);
-    if(this_mutex_index==-1) return -1;
-    else{
-        struct mutex* m=&mutex_list.mutexs[this_mutex_index];
-        acquire(m.lock);
-        m->in_use=0;
-        m->mutex_index=-1;
-        m->state=mutex_free;
-        m->curr_pid=-1;
-        m->curr_tid=-1;
-        m->mutex_id=-1;
-        release(m.lock);
-    }
-}
-int kthread_mutex_lock(int mutex_id){
-    return 0;
-}
-int kthread_mutex_unlock(int mutex_id){
-    return 0;
-}
-int next_availble_mutex(){
-    acquire(mutex_list.lock);
+
+int is_availble_for_dealloc_mutex(int needed_mutex_id) {
+    acquire(&mutex_list.lock);
     for (int i = 0; i < MAX_MUTEXES; ++i) {
-        acquire(mutex_list.mutexs[i].lock);
-        if(mutex_list.mutexs[i].in_use==0) {
-            release(mutex_list.lock);
+        acquire(&mutex_list.mutexs[i].lock);
+        if (mutex_list.mutexs[i].mutex_id == needed_mutex_id) {
+            if (mutex_list.mutexs[i].in_use != 1) {
+                release(&mutex_list.lock);
+                release(&mutex_list.mutexs[i].lock);
+                return -1;
+            } else {
+                release(&mutex_list.lock);
+                return i;
+            }
+        }
+        release(&mutex_list.mutexs[i].lock);
+    }
+    release(&mutex_list.lock);
+    return -1;
+}
+
+int next_availble_mutex() {
+    acquire(&mutex_list.lock);
+    for (int i = 0; i < MAX_MUTEXES; ++i) {
+        acquire(&mutex_list.mutexs[i].lock);
+        if (mutex_list.mutexs[i].in_use == 0) {
+            release(&mutex_list.lock);
             return i;
         }
-        release(mutex_list.mutexs[i].lock);
+        release(&mutex_list.mutexs[i].lock);
     }
-    release(mutex_list.lock);
+    release(&mutex_list.lock);
     return -1;
 }
-int is_availble_for_dealooc_mutex(int needed_mutex_id){
 
-    acquire(mutex_list.lock);
+//3.1 mutex functions
+int kthread_mutex_alloc() {
+    int this_mutex_index = next_availble_mutex();
+    if (this_mutex_index == -1) return -1;
+    else {
+        struct mutex *m = &mutex_list.mutexs[this_mutex_index];
+        m->in_use = 1;
+        m->mutex_index = this_mutex_index;
+        m->state = mutex_free;
+        m->curr_pid = myproc()->pid;
+        m->curr_tid = mythread()->tid;
+        m->mutex_id = next_mid(this_mutex_index);
+        release(&m->lock);
+        return m->mutex_id;
+    }
+}
+
+int kthread_mutex_dealloc(int mutex_id) {
+    int this_mutex_index = is_availble_for_dealloc_mutex(mutex_id);
+    if (this_mutex_index == -1) return -1;
+    else {
+        struct mutex *m = &mutex_list.mutexs[this_mutex_index];
+        m->in_use = 0;
+        m->mutex_index = -1;
+        m->state = mutex_free;
+        m->curr_pid = -1;
+        m->curr_tid = -1;
+        m->mutex_id = -1;
+        release(&m->lock);
+        return 0;
+    }
+}
+
+void
+acquiremutex(struct mutex *lk) {
+//    acquire(&lk->lock);
+    while (lk->state == mutex_locked) {
+        sleep(lk, &lk->lock);
+    }
+    lk->state = mutex_locked;
+    lk->curr_pid = myproc()->pid;
+    lk->curr_tid = mythread()->tid;
+    release(&lk->lock);
+}
+
+void
+releasemutex(struct mutex *lk) {
+//    acquire(&lk->lk);
+    lk->state = mutex_free;
+    lk->curr_pid = 0;
+    lk->curr_tid = 0;
+    wakeup(lk);
+    release(&lk->lock);
+}
+
+
+int kthread_mutex_lock(int needed_mutex_id) {
+    acquire(&mutex_list.lock);
     for (int i = 0; i < MAX_MUTEXES; ++i) {
-        acquire(mutex_list.mutexs[i].lock);
-        if(mutex_list.mutexs[i].mutex_id==needed_mutex_id) {
-            if(mutex_list.mutexs[i].in_use==1){
-                release(mutex_list.lock);
-                return -1;
-            }else{
-                return i;
-            }
-
+        acquire(&mutex_list.mutexs[i].lock);
+        if (mutex_list.mutexs[i].mutex_id == needed_mutex_id) {
+            acquiremutex(&mutex_list.mutexs[i]);
+            // we're holding the mutex
+            release(&mutex_list.mutexs[i].lock);
+            release(&mutex_list.lock);
+            return needed_mutex_id;
         }
-        release(mutex_list.mutexs[i].lock);
+        release(&mutex_list.mutexs[i].lock);
     }
-    release(mutex_list.lock);
+    release(&mutex_list.lock);
     return -1;
 }
-int is_availble_for_lock_mutex(int needed_mutex_id){
 
-    acquire(mutex_list.lock);
+int kthread_mutex_unlock(int needed_mutex_id) {
+    acquire(&mutex_list.lock);
     for (int i = 0; i < MAX_MUTEXES; ++i) {
-        acquire(mutex_list.mutexs[i].lock);
-        if(mutex_list.mutexs[i].mutex_id==needed_mutex_id) {
-            if(mutex_list.mutexs[i].state==mutex_locked){
-                release(mutex_list.lock);
-                return -1;
-            }else{
-                return i;
+        struct mutex* m = &mutex_list.mutexs[i];
+        acquire(&m->lock);
+        if (m->mutex_id == needed_mutex_id) {
+            if(mythread()->tid == m->curr_tid && myproc()->pid == m->curr_pid) {
+                releasemutex(m);
+                // we're holding the mutex
+                release(&m->lock);
+                release(&mutex_list.lock);
+                return needed_mutex_id;
             }
-
         }
-        release(mutex_list.mutexs[i].lock);
+        release(&m->lock);
     }
-    release(mutex_list.lock);
+    release(&mutex_list.lock);
     return -1;
-}
-int next_mid(int for_index){
-    int ret;
-    acquire(mutex_list.lock);
-    ret=mutex_list.nextpid;
-    mutex_list.mutexes_ids[for_index]=ret;
-    mutex_list.nextpid++;
-    release(mutex_list.lock);
-    return ret;
 }
