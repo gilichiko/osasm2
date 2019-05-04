@@ -368,6 +368,7 @@ wait(void) {
                         kfree(t->kstack);
                         t->kstack = 0;
                         t->state = threadUNUSED;
+                        t->killed = 0;
                     }
                 }
 
@@ -775,7 +776,6 @@ int kthread_join(int thread_id) {
 
     // if arrived to this line, it indicates that thread exist but still running and we shall wait.
     sleep(request_thread, &ptable.lock);
-
 
     release(&ptable.lock);
 
