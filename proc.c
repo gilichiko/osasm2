@@ -901,24 +901,20 @@ int kthread_mutex_dealloc(int mutex_id) {
 
 void
 acquiremutex(struct mutex *lk) {
-//    acquire(&lk->lock);
     while (lk->state == mutex_locked) {
         sleep(lk, &lk->lock);
     }
     lk->state = mutex_locked;
     lk->curr_pid = myproc()->pid;
     lk->curr_tid = mythread()->tid;
-    release(&lk->lock);
 }
 
 void
 releasemutex(struct mutex *lk) {
-//    acquire(&lk->lk);
     lk->state = mutex_free;
     lk->curr_pid = 0;
     lk->curr_tid = 0;
     wakeup(lk);
-    release(&lk->lock);
 }
 
 

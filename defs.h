@@ -130,10 +130,10 @@ void            kthread_exit (void);
 int             kthread_join(int thread_id);
 
 //proc for mutex-in proc.c
-int  kthreadmutex_alloc();
-int  kthreadmutex_dealloc(int mutex_id);
-int  kthreadmutex_lock(int mutex_id);
-int  kthreadmutex_unlock(int mutex_id);
+int  kthread_mutex_alloc();
+int  kthread_mutex_dealloc(int mutex_id);
+int  kthread_mutex_lock(int mutex_id);
+int  kthread_mutex_unlock(int mutex_id);
 
 
 // swtch.S
