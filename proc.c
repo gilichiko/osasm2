@@ -366,6 +366,10 @@ wait(void) {
                 for (t = p->threads; t < &p->threads[NTHREAD]; t++) {
                     if (t->state != threadUNUSED) {
                         kfree(t->kstack);
+                        t->tid = -1;
+                        t->context = 0;
+                        t->tf = 0;
+                        t->chan = 0;
                         t->kstack = 0;
                         t->state = threadUNUSED;
                         t->killed = 0;
@@ -770,6 +774,8 @@ void kthread_exit(void) {
 }
 
 int kthread_join(int thread_id) {
+    if(thread_id < 0)
+        return -1;
     acquire(&ptable.lock);
     struct proc *curproc = myproc();
     struct thread *t;
@@ -784,6 +790,7 @@ int kthread_join(int thread_id) {
             if (t->state == threadZOMBIE) {
                 t->state = threadUNUSED;
                 t->killed = 0;
+                t->tid = -1;
                 kfree(t->kstack);
                 t->kstack = 0;
                 request_thread->chan = 0;
@@ -795,6 +802,7 @@ int kthread_join(int thread_id) {
         }
     }
 
+
     if (!tid_exists) {
         release(&ptable.lock);
         return -1;
@@ -805,6 +813,7 @@ int kthread_join(int thread_id) {
     request_thread->state = threadUNUSED;
     request_thread->killed = 0;
     kfree(request_thread->kstack);
+    request_thread->tid = -1;
     request_thread->kstack = 0;
     request_thread->chan = 0;
     request_thread->tf = 0;
