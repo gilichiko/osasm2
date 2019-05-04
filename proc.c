@@ -552,6 +552,22 @@ sleep(void *chan, struct spinlock *lk) {
     }
 }
 
+void kill_other_threads() {
+    acquire(&ptable.lock);
+    struct thread *curthread = mythread();
+    struct proc *curproc = myproc();
+    struct thread *t;
+    for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
+        if(t->tid != curthread->tid) {
+            t->killed = 1;
+        }
+        if(t->state == threadSLEEPING) {
+            t->state = threadZOMBIE;
+        }
+    }
+    release(&ptable.lock);
+}
+
 //PAGEBREAK!
 // Wake up all processes sleeping on chan.
 // The ptable lock must be held.
@@ -886,10 +902,10 @@ int kthread_mutex_lock(int needed_mutex_id) {
 int kthread_mutex_unlock(int needed_mutex_id) {
     acquire(&mutex_list.lock);
     for (int i = 0; i < MAX_MUTEXES; ++i) {
-        struct mutex* m = &mutex_list.mutexs[i];
+        struct mutex *m = &mutex_list.mutexs[i];
         acquire(&m->lock);
         if (m->mutex_id == needed_mutex_id) {
-            if(mythread()->tid == m->curr_tid && myproc()->pid == m->curr_pid) {
+            if (mythread()->tid == m->curr_tid && myproc()->pid == m->curr_pid) {
                 releasemutex(m);
                 // we're holding the mutex
                 release(&m->lock);

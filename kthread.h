@@ -30,4 +30,5 @@ struct thread {
     struct trapframe *tf;        // Trap frame for current syscall
     struct context *context;     // swtch() here to run process
     struct proc *proc;           // The father procces of this thread
+    int killed;
 };

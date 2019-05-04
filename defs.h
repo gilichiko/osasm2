@@ -110,6 +110,7 @@ void            exit(void);
 int             fork(void);
 int             growproc(int);
 int             kill(int);
+void            kill_other_threads(void);
 struct cpu*     mycpu(void);
 struct proc*    myproc();
 struct thread*    mythread();
