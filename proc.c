@@ -553,6 +553,21 @@ sleep(void *chan, struct spinlock *lk) {
     }
 }
 
+int next_tid_to_join() {
+    acquire(&ptable.lock);
+    struct thread *curthread = mythread();
+    struct proc *curproc = myproc();
+    struct thread *t;
+    for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
+        if(t->tid != curthread->tid && t->state != threadUNUSED) {
+            release(&ptable.lock);
+            return t->tid;
+        }
+    }
+    release(&ptable.lock);
+    return -1;
+}
+
 void kill_other_threads() {
     acquire(&ptable.lock);
     struct thread *curthread = mythread();
@@ -563,10 +578,14 @@ void kill_other_threads() {
             t->killed = 1;
         }
         if(t->state == threadSLEEPING) {
-            t->state = threadZOMBIE;
+            t->state = threadRUNNABLE;
         }
     }
     release(&ptable.lock);
+    int next_tid;
+    while((next_tid = next_tid_to_join()) != -1) {
+        kthread_join(next_tid);
+    }
 }
 
 //PAGEBREAK!
@@ -763,6 +782,13 @@ int kthread_join(int thread_id) {
             tid_exists = 1;
             request_thread = t;
             if (t->state == threadZOMBIE) {
+                t->state = threadUNUSED;
+                t->killed = 0;
+                kfree(t->kstack);
+                t->kstack = 0;
+                request_thread->chan = 0;
+                request_thread->tf = 0;
+                request_thread->context = 0;
                 release(&ptable.lock);
                 return 0;
             }
@@ -773,12 +799,17 @@ int kthread_join(int thread_id) {
         release(&ptable.lock);
         return -1;
     }
-
     // if arrived to this line, it indicates that thread exist but still running and we shall wait.
     sleep(request_thread, &ptable.lock);
 
+    request_thread->state = threadUNUSED;
+    request_thread->killed = 0;
+    kfree(request_thread->kstack);
+    request_thread->kstack = 0;
+    request_thread->chan = 0;
+    request_thread->tf = 0;
+    request_thread->context = 0;
     release(&ptable.lock);
-
     return 0;
 }
 

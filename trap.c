@@ -100,7 +100,7 @@ trap(struct trapframe *tf) {
     if (myproc() && myproc()->killed && (tf->cs & 3) == DPL_USER)
         exit();
     if (mythread() && mythread()->killed && (tf->cs & 3) == DPL_USER)
-        exit();
+        kthread_exit();
 
     // Force process to give up CPU on clock tick.
     // If interrupts were on while locks held, would need to check nlock.
@@ -112,5 +112,5 @@ trap(struct trapframe *tf) {
     if (myproc() && myproc()->killed && (tf->cs & 3) == DPL_USER)
         exit();
     if (mythread() && mythread()->killed && (tf->cs & 3) == DPL_USER)
-        exit();
+        kthread_exit();
 }
