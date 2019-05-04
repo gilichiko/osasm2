@@ -269,6 +269,38 @@ fork(void) {
     return pid;
 }
 
+
+void deallocate_process_mutexes(struct proc *p) {
+    acquire(&mutex_list.lock);
+    for (int i = 0; i < MAX_MUTEXES; ++i) {
+        struct mutex *m = &mutex_list.mutexs[i];
+        acquire(&m->lock);
+        if (m->in_use == 1 && p->pid == m->curr_pid) {
+            m->in_use = 0;
+            m->mutex_index = -1;
+            m->state = mutex_free;
+            m->curr_pid = -1;
+            m->curr_tid = -1;
+            m->mutex_id = -1;
+        }
+        release(&m->lock);
+    }
+    release(&mutex_list.lock);
+}
+
+void unlock_thread_mutexes(struct proc *p, struct thread* t) {
+    acquire(&mutex_list.lock);
+    for (int i = 0; i < MAX_MUTEXES; ++i) {
+        struct mutex *m = &mutex_list.mutexs[i];
+        acquire(&m->lock);
+        if (m->in_use == 1 && p->pid == m->curr_pid && t->tid == m->curr_tid && m->state == mutex_locked) {
+            m->state = mutex_free;
+        }
+        release(&m->lock);
+    }
+    release(&mutex_list.lock);
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait() to find out it exited.
@@ -318,6 +350,8 @@ exit(void) {
         iput(curproc->cwd);
         end_op();
         curproc->cwd = 0;
+        deallocate_process_mutexes(myproc());
+
 
         acquire(&ptable.lock);
 
@@ -563,7 +597,7 @@ int next_tid_to_join() {
     struct proc *curproc = myproc();
     struct thread *t;
     for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
-        if(t->tid != curthread->tid && t->state != threadUNUSED) {
+        if (t->tid != curthread->tid && t->state != threadUNUSED) {
             release(&ptable.lock);
             return t->tid;
         }
@@ -578,16 +612,16 @@ void kill_other_threads() {
     struct proc *curproc = myproc();
     struct thread *t;
     for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
-        if(t->tid != curthread->tid) {
+        if (t->tid != curthread->tid) {
             t->killed = 1;
         }
-        if(t->state == threadSLEEPING) {
+        if (t->state == threadSLEEPING) {
             t->state = threadRUNNABLE;
         }
     }
     release(&ptable.lock);
     int next_tid;
-    while((next_tid = next_tid_to_join()) != -1) {
+    while ((next_tid = next_tid_to_join()) != -1) {
         kthread_join(next_tid);
     }
 }
@@ -756,6 +790,9 @@ void kthread_exit(void) {
     struct proc *curproc = myproc();
     struct thread *curthread = mythread();
     struct thread *t;
+
+    unlock_thread_mutexes(curproc, curthread);
+
     int exist_running_thread = 0;
     for (t = curproc->threads; t < &curproc->threads[NTHREAD]; t++) {
         if (t->state != threadUNUSED && t->state != threadZOMBIE && t->tid != curthread->tid) {
@@ -774,7 +811,7 @@ void kthread_exit(void) {
 }
 
 int kthread_join(int thread_id) {
-    if(thread_id < 0)
+    if (thread_id < 0)
         return -1;
     acquire(&ptable.lock);
     struct proc *curproc = myproc();
@@ -904,9 +941,11 @@ acquiremutex(struct mutex *lk) {
     while (lk->state == mutex_locked) {
         sleep(lk, &lk->lock);
     }
+    acquire(&ptable.lock);
     lk->state = mutex_locked;
     lk->curr_pid = myproc()->pid;
     lk->curr_tid = mythread()->tid;
+    release(&ptable.lock);
 }
 
 void
@@ -923,10 +962,10 @@ int kthread_mutex_lock(int needed_mutex_id) {
     for (int i = 0; i < MAX_MUTEXES; ++i) {
         acquire(&mutex_list.mutexs[i].lock);
         if (mutex_list.mutexs[i].mutex_id == needed_mutex_id) {
+            release(&mutex_list.lock);
             acquiremutex(&mutex_list.mutexs[i]);
             // we're holding the mutex
             release(&mutex_list.mutexs[i].lock);
-            release(&mutex_list.lock);
             return needed_mutex_id;
         }
         release(&mutex_list.mutexs[i].lock);
@@ -942,10 +981,10 @@ int kthread_mutex_unlock(int needed_mutex_id) {
         acquire(&m->lock);
         if (m->mutex_id == needed_mutex_id) {
             if (mythread()->tid == m->curr_tid && myproc()->pid == m->curr_pid) {
+                release(&mutex_list.lock);
                 releasemutex(m);
                 // we're holding the mutex
                 release(&m->lock);
-                release(&mutex_list.lock);
                 return needed_mutex_id;
             }
         }
