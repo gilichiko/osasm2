@@ -15,11 +15,6 @@ int kthread_mutex_dealloc(int mutex_id);
 int kthread_mutex_lock(int mutex_id);
 int kthread_mutex_unlock(int mutex_id);
 
-/* trnmnt_tree* trnmnt_tree_alloc(int depth);
-int trnmnt_tree_dealloc(trnmnt_tree* tree);
-int trnmnt_tree_acquire(trnmnt_tree* tree,int ID);
-int trnmnt_tree_release(trnmnt_tree* tree,int ID); */
-
 enum threadstate { threadUNUSED, threadEMBRYO, threadSLEEPING, threadRUNNABLE, threadRUNNING, threadZOMBIE };
 
 struct thread {

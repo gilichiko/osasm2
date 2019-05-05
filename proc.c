@@ -33,7 +33,6 @@ struct {
 struct {
     struct spinlock lock;
     int nextmid;
-    int mutexes_ids[MAX_MUTEXES];
     struct mutex mutexs[MAX_MUTEXES];
 } mutex_list;
 
@@ -288,7 +287,7 @@ void deallocate_process_mutexes(struct proc *p) {
     release(&mutex_list.lock);
 }
 
-void unlock_thread_mutexes(struct proc *p, struct thread* t) {
+void unlock_thread_mutexes(struct proc *p, struct thread *t) {
     acquire(&mutex_list.lock);
     for (int i = 0; i < MAX_MUTEXES; ++i) {
         struct mutex *m = &mutex_list.mutexs[i];
@@ -862,9 +861,7 @@ int kthread_join(int thread_id) {
 int next_mid(int for_index) {
     int ret;
     acquire(&mutex_list.lock);
-    ret = mutex_list.nextmid;
-    mutex_list.mutexes_ids[for_index] = ret;
-    mutex_list.nextmid++;
+    ret = mutex_list.nextmid++;
     release(&mutex_list.lock);
     return ret;
 }
@@ -874,11 +871,17 @@ int is_availble_for_dealloc_mutex(int needed_mutex_id) {
     for (int i = 0; i < MAX_MUTEXES; ++i) {
         acquire(&mutex_list.mutexs[i].lock);
         if (mutex_list.mutexs[i].mutex_id == needed_mutex_id) {
-            if (mutex_list.mutexs[i].in_use != 1) {
+            if (mutex_list.mutexs[i].in_use != 1 || mutex_list.mutexs[i].state == mutex_locked) {
                 release(&mutex_list.lock);
                 release(&mutex_list.mutexs[i].lock);
                 return -1;
             } else {
+                /*if (mutex_list.mutexs[i].curr_pid != myproc()->pid ||
+                    mutex_list.mutexs[i].curr_tid != mythread()->tid) {
+                    release(&mutex_list.lock);
+                    release(&mutex_list.mutexs[i].lock);
+                    return -1;
+                }*/
                 release(&mutex_list.lock);
                 return i;
             }
