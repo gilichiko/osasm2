@@ -1,17 +1,18 @@
 #define NTHREAD 16
 
 #include "kthread.h"
+
 // Per-CPU state
 struct cpu {
-  uchar apicid;                // Local APIC ID
-  struct context *scheduler;   // swtch() here to enter scheduler
-  struct taskstate ts;         // Used by x86 to find stack for interrupt
-  struct segdesc gdt[NSEGS];   // x86 global descriptor table
-  volatile uint started;       // Has the CPU started?
-  int ncli;                    // Depth of pushcli nesting.
-  int intena;                  // Were interrupts enabled before pushcli?
+    uchar apicid;                // Local APIC ID
+    struct context *scheduler;   // swtch() here to enter scheduler
+    struct taskstate ts;         // Used by x86 to find stack for interrupt
+    struct segdesc gdt[NSEGS];   // x86 global descriptor table
+    volatile uint started;       // Has the CPU started?
+    int ncli;                    // Depth of pushcli nesting.
+    int intena;                  // Were interrupts enabled before pushcli?
     struct thread *currthread; //the thread thats running on this cpu or null
-  struct proc *proc;           // The process running on this cpu or null
+    struct proc *proc;           // The process running on this cpu or null
 };
 
 extern struct cpu cpus[NCPU];
@@ -29,27 +30,30 @@ extern int ncpu;
 // at the "Switch stacks" comment. Switch doesn't save eip explicitly,
 // but it is on the stack and allocproc() manipulates it.
 struct context {
-  uint edi;
-  uint esi;
-  uint ebx;
-  uint ebp;
-  uint eip;
+    uint edi;
+    uint esi;
+    uint ebx;
+    uint ebp;
+    uint eip;
 };
 
-enum procstate { UNUSED, EMBRYO, ZOMBIE ,USED}; //no more running runable and sleeping
+enum procstate {
+    UNUSED, EMBRYO, ZOMBIE, USED
+}; //no more running runable and sleeping
 
 // Per-process state
 struct proc {
-  uint sz;                     // Size of process memory (bytes)
-  pde_t* pgdir;                // Page table
-  enum procstate state;        // Process state
-  int pid;                     // Process ID
-  struct proc *parent;         // Parent process
-  int killed;                  // If non-zero, have been killed
-  struct file *ofile[NOFILE];  // Open files
+    uint sz;                     // Size of process memory (bytes)
+    pde_t *pgdir;                // Page table
+    enum procstate state;        // Process state
+    int pid;                     // Process ID
+    struct proc *parent;         // Parent process
+    int killed;                  // If non-zero, have been killed
+    struct file *ofile[NOFILE];  // Open files
     struct thread threads[NTHREAD];
-  struct inode *cwd;           // Current directory
-  char name[16];               // Process name (debugging)
+    struct inode *cwd;           // Current directory
+    char name[16];               // Process name (debugging)
+    int nexttid;
 };
 
 // Process memory is laid out contiguously, low addresses first:

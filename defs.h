@@ -10,6 +10,8 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -108,6 +110,7 @@ void            exit(void);
 int             fork(void);
 int             growproc(int);
 int             kill(int);
+void            kill_other_threads(void);
 struct cpu*     mycpu(void);
 struct proc*    myproc();
 struct thread*    mythread();
@@ -121,6 +124,17 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+int             kthread_create(void (*start_func)(), void* stack);
+int             kthread_id (void);
+void            kthread_exit (void);
+int             kthread_join(int thread_id);
+
+//proc for mutex-in proc.c
+int  kthread_mutex_alloc();
+int  kthread_mutex_dealloc(int mutex_id);
+int  kthread_mutex_lock(int mutex_id);
+int  kthread_mutex_unlock(int mutex_id);
+
 
 // swtch.S
 void            swtch(struct context**, struct context*);
